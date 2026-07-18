@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""memclean — view, search, clean, and sanity-check your Claude Code memory.
+"""amnesia — view, search, clean, and sanity-check your Claude Code memory.
 
 Local-only, zero dependencies. The analyzer runs on your own `claude` CLI,
 so it needs no API key and nothing leaves your machine except via your
 existing Claude account.
 
-  memclean            serve the UI on http://localhost:8780
-  memclean analyze    audit memories for contradictions, stale facts, duplicates
-  memclean --check    run self-tests
+  amnesia            serve the UI on http://localhost:8780
+  amnesia analyze    audit memories for contradictions, stale facts, duplicates
+  amnesia --check    run self-tests
 
 Deleted memories move to ~/.claude/memory-trash/<project>/ — restore with mv.
 """
@@ -17,7 +17,7 @@ from pathlib import Path
 
 ROOT = Path.home() / ".claude" / "projects"
 TRASH = Path.home() / ".claude" / "memory-trash"
-ANALYSIS = Path.home() / ".claude" / "memclean" / "analysis.json"
+ANALYSIS = Path.home() / ".claude" / "amnesia" / "analysis.json"
 
 
 def parse_frontmatter(text):
@@ -114,7 +114,7 @@ def apply_op(op, src, dest, root=None, trash=None):
         if not dpath.is_file():
             raise FileNotFoundError(dest)
         _, body = parse_frontmatter(spath.read_text(errors="replace"))
-        dpath.write_text(dpath.read_text().rstrip("\n") + f"\n\n**Merged from {src} by memclean:** {body}\n")
+        dpath.write_text(dpath.read_text().rstrip("\n") + f"\n\n**Merged from {src} by amnesia:** {body}\n")
         delete_memory(sproj, sfile, root, trash)
     else:
         raise ValueError("unknown op: " + op)
@@ -179,14 +179,14 @@ def analyze(root=None, out=None):
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(findings, indent=2))
     n = sum(len(v) for v in findings.values())
-    print(f"{n} findings written to {out} — open the memclean UI to review")
+    print(f"{n} findings written to {out} — open the amnesia UI to review")
     return findings
 
 
 # ---------- web UI ----------
 
 PAGE = """<!doctype html><meta charset=utf-8>
-<title>memclean</title>
+<title>amnesia</title>
 <style>
 :root { color-scheme: light dark; }
 body { font: 15px/1.5 -apple-system, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
@@ -221,7 +221,7 @@ pre { white-space: pre-wrap; background: #8881; padding: .6rem; border-radius: 6
 .finding .apply:hover { background: #3a5; color: #fff; }
 .finding.done { opacity: .45; }
 </style>
-<h1>memclean <small>deletes move to ~/.claude/memory-trash/</small></h1>
+<h1>amnesia <small>deletes move to ~/.claude/memory-trash/</small></h1>
 <input id=q placeholder="Search name, description, body, project&hellip;" autofocus>
 <div id=count></div>
 <div id=analysis></div>
@@ -240,7 +240,7 @@ function renderAnalysis() {
   const box = $('analysis'); box.textContent = '';
   if (!findings) {
     const hint = document.createElement('div'); hint.id = 'ahint';
-    hint.textContent = 'No analysis yet — run `memclean analyze` in a terminal to audit for contradictions, stale facts, and duplicates.';
+    hint.textContent = 'No analysis yet — run `amnesia analyze` in a terminal to audit for contradictions, stale facts, and duplicates.';
     box.appendChild(hint); return;
   }
   const ops = findings.ops || [];
@@ -431,7 +431,7 @@ def main():
         analyze()
     else:
         port = int(argv[0]) if argv and argv[0].isdigit() else 8780
-        print(f"memclean on http://localhost:{port} — trash: {TRASH}")
+        print(f"amnesia on http://localhost:{port} — trash: {TRASH}")
         HTTPServer(("127.0.0.1", port), Handler).serve_forever()
 
 
