@@ -236,7 +236,8 @@ PAGE = """<!doctype html><meta charset=utf-8>
 }
 * { box-sizing: border-box; }
 body { font: 15px/1.55 -apple-system, "Segoe UI", sans-serif; margin: 0;
-  background: var(--bg); color: var(--text); }
+  background: var(--bg); color: var(--text);
+  min-height: 100vh; display: flex; flex-direction: column; }
 code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .85em;
   background: light-dark(#ececf1, #26262e); padding: .1em .35em; border-radius: 5px; }
 header { position: sticky; top: 0; z-index: 5; border-bottom: 1px solid var(--border);
@@ -251,7 +252,28 @@ header { position: sticky; top: 0; z-index: 5; border-bottom: 1px solid var(--bo
   border: 1px solid var(--border); border-radius: 99px; background: var(--card); outline: none; }
 #q:focus { border-color: var(--accent); }
 #score { font-size: .8rem; color: var(--ok); white-space: nowrap; }
+main, footer { position: relative; z-index: 1; }
 main { max-width: 960px; margin: 0 auto; padding: 1rem; }
+#cv { position: fixed; inset: 0; z-index: 0; display: none; }
+body[data-view=home] #cv { display: block; opacity: .4; pointer-events: none; }
+body[data-view=map] #cv { display: block; cursor: grab; }
+body[data-view=map] footer { display: none; }
+.mapbar { position: fixed; top: 3.9rem; left: 0; right: 0; text-align: center;
+  color: var(--muted); font-size: .84rem; }
+.mapbar a { color: var(--accent); cursor: pointer; margin-left: .8rem; }
+.legend { position: fixed; bottom: 1.2rem; left: 0; right: 0; text-align: center;
+  font-size: .74rem; color: var(--muted); }
+.legend i { display: inline-block; width: 15px; height: 3px; border-radius: 2px;
+  vertical-align: middle; margin: 0 .35rem 0 1rem; }
+#tip { position: fixed; z-index: 4; background: var(--card); border: 1px solid var(--border);
+  border-radius: 8px; padding: .3rem .7rem; font-size: .8rem; pointer-events: none;
+  max-width: 320px; box-shadow: 0 4px 18px #0004; }
+#tip .proj-tag { margin-left: .4rem; }
+#ncard { position: fixed; z-index: 4; left: 50%; transform: translateX(-50%); bottom: 4.2rem;
+  width: min(400px, 92vw); background: var(--card); border: 1px solid var(--border);
+  border-radius: 14px; padding: 1rem 1.2rem; box-shadow: 0 12px 44px #0006; }
+#ncard .t { font-weight: 600; }
+#ncard .qbtns { justify-content: flex-start; margin-top: .8rem; }
 .home { text-align: center; padding: 3.2rem 1rem 1.5rem; }
 .big { font-size: 1.45rem; line-height: 1.45; max-width: 34rem; margin: 0 auto; font-weight: 400; }
 .big b { color: var(--accent); }
@@ -306,7 +328,7 @@ pre { white-space: pre-wrap; background: light-dark(#f1f1f4, #141419); border: 1
   background: light-dark(#26262e, #e9e9ee); color: light-dark(#fff, #16161a);
   padding: .55rem 1.1rem; border-radius: 99px; font-size: .86rem; box-shadow: 0 6px 24px #0005; }
 #toast a { color: light-dark(#a5a5ff, #4a4ad0); cursor: pointer; margin-left: .7rem; text-decoration: underline; }
-footer { max-width: 960px; margin: 2.5rem auto 0; padding: 1rem; border-top: 1px solid var(--border);
+footer { max-width: 960px; width: 100%; margin: auto auto 0; padding: 1rem; border-top: 1px solid var(--border);
   color: var(--muted); font-size: .78rem; text-align: center; }
 footer a { color: var(--accent); text-decoration: none; }
 </style>
@@ -319,7 +341,10 @@ footer a { color: var(--accent); text-decoration: none; }
 <section id=home></section>
 <section id=queue hidden></section>
 <section id=browse hidden></section>
+<section id=map hidden><div class=mapbar></div><div id=tip hidden></div><div id=ncard hidden></div>
+<div class=legend></div></section>
 </main>
+<canvas id=cv></canvas>
 <div id=toast hidden></div>
 <footer>nothing is ever lost &mdash; forgotten memories move to <code>~/.claude/memory-trash/</code>
 &middot; <a href="https://github.com/tiny-cloud-ventures/amnesia">github</a> &middot; MIT</footer>
@@ -351,7 +376,8 @@ function buildRefs() {
 }
 function show(id) {
   view = id;
-  for (const s of ['home', 'queue', 'browse']) $(s).hidden = s !== id;
+  document.body.dataset.view = id;
+  for (const s of ['home', 'queue', 'browse', 'map']) $(s).hidden = s !== id;
 }
 function renderScore() {
   $('score').textContent = cleaned > 0 ? '✓ ' + cleaned + ' cleaned' : '';
@@ -386,13 +412,204 @@ function buildFindings() {
   return out;
 }
 
+// ---- the map: every memory a star, colored by project, wired by its links ----
+const NAME_RE = /\\[\\[([\\w-]+)\\]\\]/g;
+function buildGraph(ms, an) {
+  const nodes = ms.map((m, i) => ({ i, m }));
+  const byR = {}, byName = {}, byFile = {};
+  for (const n of nodes) {
+    byR[n.m.project + '/' + n.m.file] = n.i;
+    (byName[n.m.name] = byName[n.m.name] || []).push(n.i);
+    (byFile[n.m.file] = byFile[n.m.file] || []).push(n.i);
+  }
+  const seen = new Set(), edges = [];
+  const add = (a, b, kind) => {
+    if (a == null || b == null || a === b) return;
+    const k = Math.min(a, b) + ':' + Math.max(a, b);
+    if (!seen.has(k)) { seen.add(k); edges.push({ a, b, kind }); }
+  };
+  for (const n of nodes)
+    for (const mt of n.m.body.matchAll(NAME_RE))
+      for (const j of byName[mt[1]] || []) add(n.i, j, 'link');
+  for (const idxs of Object.values(byFile))
+    for (let x = 1; x < idxs.length; x++) add(idxs[0], idxs[x], 'twin');
+  for (const c of (an && an.contradictions) || [])
+    for (let x = 1; x < (c.files || []).length; x++) add(byR[c.files[0]], byR[c.files[x]], 'conflict');
+  for (const d of (an && an.duplicates) || [])
+    for (let x = 1; x < (d.files || []).length; x++) add(byR[d.files[0]], byR[d.files[x]], 'twin');
+  for (const o of (an && an.ops) || [])
+    if (o.op === 'merge') add(byR[o.from], byR[o.to], 'twin');
+  return { nodes, edges };
+}
+
+let G = { nodes: [], edges: [] }, hovered = null, dragging = null, dragMoved = 0;
+const cv = $('cv'), ctx = cv.getContext('2d');
+const DARK = matchMedia('(prefers-color-scheme: dark)');
+function edgeColor(kind) {
+  return { link: '#8888aa' + (DARK.matches ? '55' : '66'), twin: '#8b8bf588',
+    conflict: '#e5484dcc' }[kind];
+}
+function nodeColor(n) { return 'hsl(' + n.hue + ' 62% ' + (DARK.matches ? 62 : 46) + '%)'; }
+
+function refreshGraph() {
+  const old = {};
+  for (const n of G.nodes) old[n.m.project + '/' + n.m.file] = n;
+  G = buildGraph(mems, analysis);
+  const nproj = {};
+  for (const m of mems) nproj[m.project] = (nproj[m.project] || 0) + 1;
+  const projs = Object.keys(nproj).sort((a, b) => nproj[b] - nproj[a]);
+  const w = innerWidth, h = innerHeight, R = Math.min(w, h) * .34;
+  for (const n of G.nodes) {
+    const pi = projs.indexOf(n.m.project), ang = (pi - 1) / (projs.length - 1 || 1) * 2 * Math.PI - Math.PI / 2;
+    n.hue = Math.round(pi * 137.508) % 360;
+    n.ax = w / 2 + (pi ? Math.cos(ang) * R : 0); n.ay = h / 2 + (pi ? Math.sin(ang) * R : 0);
+    n.r = Math.min(9, 3.2 + Math.sqrt(n.m.body.length) / 14);
+    const o = old[n.m.project + '/' + n.m.file];
+    if (o) { n.x = o.x; n.y = o.y; n.vx = o.vx; n.vy = o.vy; }
+    else {
+      n.x = n.ax + (Math.random() - .5) * 90; n.y = n.ay + (Math.random() - .5) * 90;
+      n.vx = 0; n.vy = 0;
+    }
+  }
+}
+
+function tick() {
+  const ns = G.nodes;
+  // ponytail: O(n²) repulsion — fine to ~1000 nodes, grid-bucket it beyond that
+  for (let i = 0; i < ns.length; i++) for (let j = i + 1; j < ns.length; j++) {
+    const a = ns[i], b = ns[j];
+    let dx = b.x - a.x, dy = b.y - a.y, d2 = dx * dx + dy * dy;
+    if (d2 < 1) { dx = Math.sin(i) + .1; dy = Math.cos(j); d2 = 1; }
+    if (d2 < 22500) {
+      const d = Math.sqrt(d2), f = 620 / d2, fx = dx / d * f, fy = dy / d * f;
+      a.vx -= fx; a.vy -= fy; b.vx += fx; b.vy += fy;
+    }
+  }
+  for (const e of G.edges) {
+    const a = ns[e.a], b = ns[e.b];
+    const dx = b.x - a.x, dy = b.y - a.y, d = Math.sqrt(dx * dx + dy * dy) || 1;
+    const f = (d - 70) * .004, fx = dx / d * f, fy = dy / d * f;
+    a.vx += fx; a.vy += fy; b.vx -= fx; b.vy -= fy;
+  }
+  const w = innerWidth, h = innerHeight;
+  for (const n of ns) {
+    n.vx += (n.ax - n.x) * .0045; n.vy += (n.ay - n.y) * .0045;
+    if (n.x < 60) n.vx += (60 - n.x) * .02; else if (n.x > w - 60) n.vx -= (n.x - w + 60) * .02;
+    if (n.y < 95) n.vy += (95 - n.y) * .02; else if (n.y > h - 85) n.vy -= (n.y - h + 85) * .02;
+    n.vx *= .85; n.vy *= .85;
+    if (n !== dragging) { n.x += n.vx; n.y += n.vy; }
+  }
+}
+
+function draw(t) {
+  const dpr = devicePixelRatio || 1, w = innerWidth, h = innerHeight;
+  if (cv.width !== w * dpr || cv.height !== h * dpr) { cv.width = w * dpr; cv.height = h * dpr; }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  for (const e of G.edges) {
+    const a = G.nodes[e.a], b = G.nodes[e.b];
+    ctx.strokeStyle = edgeColor(e.kind);
+    ctx.lineWidth = e.kind === 'conflict' ? 1.8 : 1;
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  }
+  for (const n of G.nodes) {
+    const wob = Math.sin(t / 1300 + n.i * 2.1) * 1.3;
+    ctx.shadowColor = nodeColor(n); ctx.shadowBlur = n === hovered ? 22 : 10;
+    ctx.fillStyle = nodeColor(n);
+    ctx.beginPath(); ctx.arc(n.x, n.y + wob, n.r + (n === hovered ? 2.5 : 0), 0, 7); ctx.fill();
+  }
+  ctx.shadowBlur = 0;
+}
+
+function loop(t) {
+  requestAnimationFrame(loop);
+  if (view !== 'home' && view !== 'map') return;
+  tick(); draw(t);
+}
+
+function nodeAt(x, y) {
+  let best = null, bd = 200;
+  for (const n of G.nodes) {
+    const d = (n.x - x) ** 2 + (n.y - y) ** 2;
+    if (d < bd) { bd = d; best = n; }
+  }
+  return best;
+}
+cv.onpointermove = e => {
+  if (dragging) {
+    dragging.x = e.clientX; dragging.y = e.clientY; dragMoved++;
+    $('tip').hidden = true; return;
+  }
+  hovered = nodeAt(e.clientX, e.clientY);
+  cv.style.cursor = hovered ? 'pointer' : 'grab';
+  const tip = $('tip');
+  if (!hovered) { tip.hidden = true; return; }
+  tip.textContent = '';
+  tip.append(titleOf(hovered.m));
+  const tag = document.createElement('span'); tag.className = 'proj-tag';
+  tag.textContent = prettyProj(hovered.m.project); tip.appendChild(tag);
+  tip.style.left = Math.min(e.clientX + 14, innerWidth - 340) + 'px';
+  tip.style.top = (e.clientY + 16) + 'px';
+  tip.hidden = false;
+};
+cv.onpointerdown = e => {
+  dragging = nodeAt(e.clientX, e.clientY); dragMoved = 0;
+  if (dragging) cv.setPointerCapture(e.pointerId);
+};
+cv.onpointerup = () => {
+  if (dragging && dragMoved < 4 && view === 'map') openNodeCard(dragging);
+  else if (!dragging && view === 'map') $('ncard').hidden = true;
+  dragging = null;
+};
+
+function openNodeCard(n) {
+  const c = $('ncard'); c.textContent = '';
+  const top = document.createElement('div'); top.className = 'top';
+  const t = document.createElement('span'); t.className = 't'; t.textContent = titleOf(n.m);
+  const badge = document.createElement('span');
+  badge.className = 'badge t-' + (n.m.type || 'unknown');
+  badge.textContent = TYPE_LABEL[n.m.type] || n.m.type || '?';
+  top.append(t, badge);
+  const proj = document.createElement('div'); proj.className = 'desc';
+  proj.textContent = prettyProj(n.m.project);
+  const det = document.createElement('details'); det.className = 'body';
+  const sum = document.createElement('summary'); sum.textContent = 'details';
+  const pre = document.createElement('pre'); pre.textContent = n.m.body;
+  det.append(sum, pre);
+  const btns = document.createElement('div'); btns.className = 'qbtns';
+  const f = document.createElement('button'); f.className = 'forget'; f.textContent = 'forget';
+  f.onclick = async () => { if (await deleteMem(n.m)) { refreshGraph(); c.hidden = true; } };
+  const x = document.createElement('button'); x.className = 'ghost'; x.textContent = 'close';
+  x.onclick = () => { c.hidden = true; };
+  btns.append(f, x);
+  c.append(top, proj, det, btns);
+  c.hidden = false;
+}
+
+function renderMap() {
+  show('map');
+  $('ncard').hidden = true; $('tip').hidden = true;
+  const bar = document.querySelector('.mapbar'); bar.textContent = '';
+  bar.append('Every dot is one memory — drag them around, click one to look closer.');
+  const a = document.createElement('a'); a.textContent = '← back'; a.onclick = renderHome;
+  bar.appendChild(a);
+  const leg = document.querySelector('.legend'); leg.textContent = '';
+  const item = (color, label) => {
+    const i = document.createElement('i'); i.style.background = color;
+    leg.append(i, ' ' + label);
+  };
+  leg.append('colors = projects');
+  item('#8888aa', 'linked memories'); item('#8b8bf5', 'remembered twice');
+  if (analysis && (analysis.contradictions || []).length) item('#e5484d', 'contradiction');
+}
+
 async function deleteMem(m) {
   const r = await fetch('/api/delete', { method: 'POST',
     body: JSON.stringify({ project: m.project, file: m.file }) });
   if (!r.ok) { alert('failed: ' + (await r.json()).error); return false; }
   mems = mems.filter(x => x !== m);
   delete byRef[m.project + '/' + m.file];
-  cleaned++; renderScore(); toast(m);
+  cleaned++; renderScore(); toast(m); refreshGraph();
   return true;
 }
 function toast(m) {
@@ -405,7 +622,7 @@ function toast(m) {
       body: JSON.stringify({ project: lastDel.project, file: lastDel.file }) });
     if (!r.ok) { alert('undo failed: ' + (await r.json()).error); return; }
     mems.push(lastDel); byRef[lastDel.project + '/' + lastDel.file] = lastDel;
-    cleaned--; renderScore(); t.hidden = true;
+    cleaned--; renderScore(); t.hidden = true; refreshGraph();
     if (view === 'browse') renderBrowse(); else if (view === 'home') renderHome();
   };
   t.appendChild(u); t.hidden = false;
@@ -458,6 +675,8 @@ function renderHome() {
     const a = document.createElement('a'); a.textContent = 'rescan'; a.onclick = doScan;
     links.appendChild(a);
   }
+  const mp = document.createElement('a'); mp.textContent = 'see the map ✨';
+  mp.onclick = renderMap; links.appendChild(mp);
   const b = document.createElement('a'); b.textContent = 'browse everything';
   b.onclick = () => renderBrowse(); links.appendChild(b);
   wrap.appendChild(links);
@@ -474,7 +693,7 @@ async function doScan() {
       if (!status.error) {
         const r = await fetch('/api/analysis');
         analysis = r.ok ? await r.json() : null;
-        findings = buildFindings(); qdone = 0;
+        findings = buildFindings(); qdone = 0; refreshGraph();
       }
       if (view === 'home') renderHome();
     }
@@ -540,7 +759,7 @@ function renderQueue() {
       const r = await fetch('/api/apply', { method: 'POST',
         body: JSON.stringify({ op: f.op.op, from: f.op.from, to: f.op.to }) });
       if (!r.ok) { alert('failed: ' + (await r.json()).error); return; }
-      mems = await (await fetch('/api/memories')).json(); buildRefs();
+      mems = await (await fetch('/api/memories')).json(); buildRefs(); refreshGraph();
       cleaned++; renderScore(); consume();
     };
     btns.appendChild(go);
@@ -613,7 +832,9 @@ async function load() {
   analysis = r.ok ? await r.json() : null;
   try { status = await (await fetch('/api/status')).json(); } catch (e) {}
   findings = buildFindings();
-  renderScore(); renderHome();
+  refreshGraph(); requestAnimationFrame(loop);
+  renderScore();
+  if (location.hash === '#map' && mems.length) renderMap(); else renderHome();
   if (status.running) doScan();
 }
 load();
