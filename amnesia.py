@@ -254,7 +254,7 @@ header { position: sticky; top: 0; z-index: 5; border-bottom: 1px solid var(--bo
 #score { font-size: .8rem; color: var(--ok); white-space: nowrap; }
 main, footer { position: relative; z-index: 1; }
 main { max-width: 960px; margin: 0 auto; padding: 1rem; }
-#cv { position: fixed; inset: 0; z-index: 0; display: none; }
+#cv { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 0; display: none; }
 body[data-view=home] #cv { display: block; opacity: .4; pointer-events: none; }
 body[data-view=map] #cv { display: block; cursor: grab; }
 body[data-view=map] footer { display: none; }
