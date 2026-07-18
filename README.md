@@ -18,10 +18,10 @@ Requires Python 3.9+ and (for `analyze`) the [Claude Code](https://claude.com/cl
 
 ```sh
 # run it directly
-uvx --from git+https://github.com/OWNER/amnesia amnesia
+uvx --from git+https://github.com/tiny-cloud-ventures/amnesia amnesia
 
 # or the zero-tooling way
-curl -O https://raw.githubusercontent.com/OWNER/amnesia/main/amnesia.py
+curl -O https://raw.githubusercontent.com/tiny-cloud-ventures/amnesia/main/amnesia.py
 python3 amnesia.py
 ```
 
