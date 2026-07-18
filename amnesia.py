@@ -186,64 +186,170 @@ def analyze(root=None, out=None):
 # ---------- web UI ----------
 
 PAGE = """<!doctype html><meta charset=utf-8>
+<meta name=viewport content="width=device-width, initial-scale=1">
 <title>amnesia</title>
 <style>
-:root { color-scheme: light dark; }
-body { font: 15px/1.5 -apple-system, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
-h1 { font-size: 1.3rem; } h1 small { font-weight: normal; opacity: .6; font-size: .8rem; }
-h2 { font-size: .85rem; opacity: .6; margin: 1.5rem 0 .5rem; font-family: monospace; }
-h3 { font-size: .95rem; margin: 1rem 0 .3rem; }
-#q { width: 100%; padding: .5rem .7rem; font-size: 1rem; border: 1px solid #8884; border-radius: 8px; box-sizing: border-box; }
-.card, .finding { border: 1px solid #8883; border-radius: 8px; padding: .6rem .8rem; margin: .5rem 0; }
-.card .top { display: flex; gap: .5rem; align-items: baseline; }
-.card b { font-family: monospace; font-size: .9rem; }
-.badge { font-size: .7rem; padding: .05rem .45rem; border-radius: 99px; background: #8882; }
-.card .top button { margin-left: auto; border: 1px solid #d33a; background: none; color: #d33;
-  border-radius: 6px; padding: .1rem .6rem; cursor: pointer; }
-.card .top button:hover { background: #d33; color: #fff; }
-.desc { opacity: .8; font-size: .9rem; }
-details { margin-top: .3rem; } summary { cursor: pointer; font-size: .8rem; opacity: .6; }
-pre { white-space: pre-wrap; background: #8881; padding: .6rem; border-radius: 6px; font-size: .8rem; }
-.date { font-size: .75rem; opacity: .5; }
-#count, #ahint { opacity: .6; font-size: .85rem; margin: .5rem 0; }
-.finding b { display: block; margin-bottom: .2rem; }
-.finding p { margin: .2rem 0; font-size: .9rem; opacity: .85; }
-.chip { display: inline-block; font-family: monospace; font-size: .75rem; background: #8882;
-  border-radius: 6px; padding: .05rem .4rem; margin: .15rem .25rem 0 0; cursor: pointer; }
-.chip:hover { background: #8884; }
-.k-contradictions { border-left: 3px solid #d33; }
-.k-stale { border-left: 3px solid #d90; }
-.k-duplicates { border-left: 3px solid #38d; }
-.k-ops { border-left: 3px solid #3a5; }
-.op-kind { font-family: monospace; font-size: .75rem; font-weight: bold; margin-right: .3rem; }
-.finding .apply { float: right; border: 1px solid #3a5a; background: none; color: #3a5;
-  border-radius: 6px; padding: .1rem .6rem; cursor: pointer; }
-.finding .apply:hover { background: #3a5; color: #fff; }
+:root { color-scheme: light dark;
+  --bg: light-dark(#f6f6f8, #101014);
+  --card: light-dark(#ffffff, #1a1a20);
+  --border: light-dark(#e4e4e9, #2a2a33);
+  --text: light-dark(#1c1c22, #e9e9ee);
+  --muted: light-dark(#70707e, #9a9aa8);
+  --accent: light-dark(#5b5bd6, #8b8bf5);
+  --danger: #e5484d; --ok: #30a46c; --warn: #d9822b; --info: #3d84e0;
+}
+* { box-sizing: border-box; }
+body { font: 15px/1.55 -apple-system, "Segoe UI", sans-serif; margin: 0;
+  background: var(--bg); color: var(--text); }
+code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .85em;
+  background: light-dark(#ececf1, #26262e); padding: .1em .35em; border-radius: 5px; }
+header { position: sticky; top: 0; z-index: 5; border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(10px); }
+.bar { max-width: 960px; margin: 0 auto; padding: .65rem 1rem;
+  display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+.wm { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 1.15rem; font-weight: 600; }
+.wm i { font-style: normal; }
+.wm i:nth-of-type(1){opacity:.75} .wm i:nth-of-type(2){opacity:.55}
+.wm i:nth-of-type(3){opacity:.35} .wm i:nth-of-type(4){opacity:.18}
+#q { flex: 1; min-width: 220px; padding: .45rem .9rem; font-size: .95rem; color: var(--text);
+  border: 1px solid var(--border); border-radius: 99px; background: var(--card); outline: none; }
+#q:focus { border-color: var(--accent); }
+#stats { font-size: .8rem; color: var(--muted); white-space: nowrap; }
+main { max-width: 960px; margin: 0 auto; padding: 1rem; }
+h2 { font-size: .8rem; font-weight: 600; color: var(--muted); margin: 1.6rem 0 .5rem;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .03em; }
+h3 { font-size: .95rem; margin: 1.4rem 0 .4rem; }
+#count { color: var(--muted); font-size: .82rem; margin: .6rem 0 0; }
+.hint { border: 1px dashed var(--border); border-radius: 10px; padding: .9rem 1.1rem;
+  margin: 1rem 0; color: var(--muted); font-size: .9rem; background: var(--card); }
+.card, .finding { background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  padding: .65rem .9rem; margin: .5rem 0; transition: border-color .15s; }
+.card:hover { border-color: light-dark(#c9c9d2, #3a3a45); }
+.card .top { display: flex; gap: .55rem; align-items: baseline; }
+.card b { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .88rem; font-weight: 600; }
+.badge { font-size: .68rem; padding: .12rem .55rem; border-radius: 99px;
+  background: light-dark(#ececf1, #26262e); color: var(--muted); cursor: pointer; }
+.t-project { background: color-mix(in srgb, var(--info) 14%, transparent); color: var(--info); }
+.t-user { background: color-mix(in srgb, #8b5cf6 14%, transparent); color: #8b5cf6; }
+.t-feedback { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+.t-reference { background: color-mix(in srgb, #12a594 14%, transparent); color: #12a594; }
+.card .top button { margin-left: auto; border: 1px solid transparent; background: none;
+  color: var(--muted); border-radius: 6px; padding: .1rem .6rem; cursor: pointer; font-size: .8rem; }
+.card:hover .top button { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+.card .top button.arm, .card .top button:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
+.desc { color: var(--muted); font-size: .88rem; margin-top: .15rem; }
+details { margin-top: .3rem; }
+summary { cursor: pointer; font-size: .78rem; color: var(--muted); }
+pre { white-space: pre-wrap; background: light-dark(#f1f1f4, #141419); border: 1px solid var(--border);
+  padding: .6rem .8rem; border-radius: 8px; font-size: .78rem; overflow-x: auto; }
+.date { font-size: .72rem; color: var(--muted); }
+.finding b { display: block; margin-bottom: .15rem; font-size: .9rem; }
+.finding p { margin: .2rem 0; font-size: .88rem; color: var(--muted); }
+.chip { display: inline-block; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .72rem;
+  background: light-dark(#ececf1, #26262e); border-radius: 6px; padding: .08rem .45rem;
+  margin: .2rem .25rem 0 0; cursor: pointer; color: var(--text); }
+.chip:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+.k-contradictions { border-left: 3px solid var(--danger); }
+.k-stale { border-left: 3px solid var(--warn); }
+.k-duplicates { border-left: 3px solid var(--info); }
+.k-ops { border-left: 3px solid var(--ok); }
+.op-kind { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .72rem;
+  font-weight: 700; margin-right: .35rem; color: var(--ok); }
+.finding .apply { float: right; border: 1px solid color-mix(in srgb, var(--ok) 50%, transparent);
+  background: none; color: var(--ok); border-radius: 6px; padding: .12rem .7rem; cursor: pointer; font-size: .8rem; }
+.finding .apply:hover { background: var(--ok); color: #fff; }
 .finding.done { opacity: .45; }
+footer { max-width: 960px; margin: 2.5rem auto 0; padding: 1rem; border-top: 1px solid var(--border);
+  color: var(--muted); font-size: .78rem; text-align: center; }
+footer a { color: var(--accent); text-decoration: none; }
 </style>
-<h1>amnesia <small>deletes move to ~/.claude/memory-trash/</small></h1>
-<input id=q placeholder="Search name, description, body, project&hellip;" autofocus>
+<header><div class=bar>
+  <span class=wm>amn<i>e</i><i>s</i><i>i</i><i>a</i></span>
+  <input id=q placeholder="Search memories&hellip;" autofocus>
+  <span id=stats></span>
+</div></header>
+<main>
 <div id=count></div>
 <div id=analysis></div>
 <div id=list></div>
+</main>
+<footer>deletes are reversible &mdash; files move to <code>~/.claude/memory-trash/</code>
+&middot; <a href="https://github.com/tiny-cloud-ventures/amnesia">github</a> &middot; MIT</footer>
 <script>
 let mems = [], findings = null;
 const $ = id => document.getElementById(id);
 const TITLES = { contradictions: 'Contradictions', stale: 'Stale / superseded', duplicates: 'Duplicates' };
+function prettyProj(p) {
+  const m = p.match(/^-(?:Users|home)-[^-]+(.*)$/);
+  return m ? '~' + (m[1] ? m[1].replace('-', '/') : '') : p;
+}
 async function load() {
   mems = await (await fetch('/api/memories')).json();
   const r = await fetch('/api/analysis');
   findings = r.ok ? await r.json() : null;
+  $('stats').textContent = mems.length + ' memories · ' +
+    new Set(mems.map(m => m.project)).size + ' projects';
   render(); renderAnalysis();
+}
+function chipEl(label, query) {
+  const c = document.createElement('span'); c.className = 'chip'; c.textContent = label;
+  c.onclick = () => { $('q').value = query; render(); };
+  return c;
+}
+function findingEl(kind, title, detail) {
+  const d = document.createElement('div'); d.className = 'finding k-' + kind;
+  const t = document.createElement('b'); t.textContent = title;
+  const p = document.createElement('p'); p.textContent = detail;
+  d.append(t, p);
+  return d;
+}
+function renderTriage(box) {
+  const rows = [];
+  const byFile = {};
+  for (const m of mems) (byFile[m.file] = byFile[m.file] || []).push(m);
+  for (const [f, ms] of Object.entries(byFile)) {
+    if (ms.length < 2) continue;
+    const d = findingEl('duplicates', f + ' exists in ' + ms.length + ' projects',
+      'Same memory file in multiple places — likely cross-repo pollution or a consolidation candidate.');
+    for (const m of ms) d.appendChild(chipEl(prettyProj(m.project) + '/' + f, f));
+    rows.push(d);
+  }
+  const old = mems.filter(m => (Date.now() / 1000 - m.mtime) > 90 * 86400)
+    .sort((a, b) => a.mtime - b.mtime).slice(0, 6);
+  if (old.length) {
+    const d = findingEl('stale', 'Untouched for 90+ days',
+      'Oldest memories — verify these still describe reality before your agent acts on them.');
+    for (const m of old) d.appendChild(chipEl(m.file, m.file));
+    rows.push(d);
+  }
+  if (!rows.length) return false;
+  const h = document.createElement('h3'); h.textContent = 'Review first';
+  box.appendChild(h);
+  for (const d of rows) box.appendChild(d);
+  return true;
 }
 function renderAnalysis() {
   const box = $('analysis'); box.textContent = '';
   if (!findings) {
-    const hint = document.createElement('div'); hint.id = 'ahint';
-    hint.textContent = 'No analysis yet — run `amnesia analyze` in a terminal to audit for contradictions, stale facts, and duplicates.';
+    renderTriage(box);
+    const hint = document.createElement('div'); hint.className = 'hint';
+    const c = document.createElement('code'); c.textContent = 'amnesia analyze';
+    hint.append('For the full audit, run ', c,
+      ' in a terminal — it checks for contradictions, stale facts, duplicates, and misfiled memories.');
     box.appendChild(hint); return;
   }
   const ops = findings.ops || [];
+  for (const kind of ['contradictions']) {
+    const items = findings[kind] || [];
+    if (!items.length) continue;
+    const h = document.createElement('h3'); h.textContent = 'Review first — ' + TITLES[kind].toLowerCase() + ' (' + items.length + ')';
+    box.appendChild(h);
+    for (const it of items) {
+      const d = findingEl(kind, it.title, it.detail);
+      for (const f of it.files || []) d.appendChild(chipEl(f, f.split('/').pop()));
+      box.appendChild(d);
+    }
+  }
   if (ops.length) {
     const h = document.createElement('h3'); h.textContent = 'Suggested consolidations (' + ops.length + ')';
     box.appendChild(h);
@@ -263,27 +369,18 @@ function renderAnalysis() {
       t.append(k, document.createTextNode(o.from + ' → ' + o.to));
       const p = document.createElement('p'); p.textContent = o.reason;
       d.append(btn, t, p);
-      const c = document.createElement('span'); c.className = 'chip'; c.textContent = o.from;
-      c.onclick = () => { $('q').value = o.from.split('/').pop(); render(); };
-      d.appendChild(c);
+      d.appendChild(chipEl(o.from, o.from.split('/').pop()));
       box.appendChild(d);
     }
   }
-  for (const kind of Object.keys(TITLES)) {
+  for (const kind of ['stale', 'duplicates']) {
     const items = findings[kind] || [];
     if (!items.length) continue;
     const h = document.createElement('h3'); h.textContent = TITLES[kind] + ' (' + items.length + ')';
     box.appendChild(h);
     for (const it of items) {
-      const d = document.createElement('div'); d.className = 'finding k-' + kind;
-      const t = document.createElement('b'); t.textContent = it.title;
-      const p = document.createElement('p'); p.textContent = it.detail;
-      d.append(t, p);
-      for (const f of it.files || []) {
-        const c = document.createElement('span'); c.className = 'chip'; c.textContent = f;
-        c.onclick = () => { $('q').value = f.split('/').pop(); render(); };
-        d.appendChild(c);
-      }
+      const d = findingEl(kind, it.title, it.detail);
+      for (const f of it.files || []) d.appendChild(chipEl(f, f.split('/').pop()));
       box.appendChild(d);
     }
   }
@@ -298,20 +395,27 @@ function render() {
   for (const m of shown) {
     if (m.project !== proj) {
       proj = m.project;
-      const h = document.createElement('h2'); h.textContent = proj; list.appendChild(h);
+      const h = document.createElement('h2'); h.textContent = prettyProj(proj); h.title = proj;
+      list.appendChild(h);
     }
     const card = document.createElement('div'); card.className = 'card';
     const top = document.createElement('div'); top.className = 'top';
     const name = document.createElement('b'); name.textContent = m.file;
-    const badge = document.createElement('span'); badge.className = 'badge'; badge.textContent = m.type || '?';
+    const badge = document.createElement('span');
+    badge.className = 'badge t-' + (m.type || 'unknown'); badge.textContent = m.type || '?';
+    badge.onclick = () => { $('q').value = m.type || ''; render(); };
     const date = document.createElement('span'); date.className = 'date';
     date.textContent = new Date(m.mtime * 1000).toLocaleDateString();
     const del = document.createElement('button'); del.textContent = 'delete';
+    let armed = false;
+    const disarm = () => { armed = false; del.textContent = 'delete'; del.classList.remove('arm'); };
+    del.onmouseleave = disarm;
     del.onclick = async () => {
+      if (!armed) { armed = true; del.textContent = 'confirm'; del.classList.add('arm'); return; }
       const r = await fetch('/api/delete', { method: 'POST',
         body: JSON.stringify({ project: m.project, file: m.file }) });
       if (r.ok) { mems = mems.filter(x => x !== m); render(); }
-      else alert('delete failed: ' + (await r.json()).error);
+      else { disarm(); alert('delete failed: ' + (await r.json()).error); }
     };
     top.append(name, badge, date, del);
     const desc = document.createElement('div'); desc.className = 'desc'; desc.textContent = m.description;
