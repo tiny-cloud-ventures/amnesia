@@ -11,8 +11,8 @@ existing Claude account.
 
 Deleted memories move to ~/.claude/memory-trash/<project>/ — restore with mv.
 """
-import json, re, shutil, subprocess, sys
-from http.server import HTTPServer, BaseHTTPRequestHandler
+import json, re, shutil, subprocess, sys, threading
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 
 ROOT = Path.home() / ".claude" / "projects"
@@ -72,6 +72,23 @@ def delete_memory(project, filename, root=None, trash=None):
     if index.is_file():
         lines = index.read_text().splitlines(keepends=True)
         index.write_text("".join(l for l in lines if f"({filename})" not in l))
+
+
+def restore_memory(project, filename, root=None, trash=None):
+    root = root or ROOT
+    trash = trash or TRASH
+    # trust boundary: same validation as delete_memory
+    if "/" in project or "/" in filename or ".." in project or ".." in filename:
+        raise ValueError("bad path")
+    src = trash / project / filename
+    if not src.is_file():
+        raise FileNotFoundError(filename)
+    mdir = root / project / "memory"
+    if (mdir / filename).exists():
+        raise ValueError("exists: " + filename)
+    mdir.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(src), str(mdir / filename))
+    _index_add(mdir, filename)
 
 
 def _split_ref(ref):
@@ -183,6 +200,25 @@ def analyze(root=None, out=None):
     return findings
 
 
+A_STATE = {"running": False, "error": None}
+
+
+def start_analyze():
+    if A_STATE["running"]:
+        return
+    A_STATE.update(running=True, error=None)
+
+    def run():
+        try:
+            analyze()
+        except BaseException as e:  # analyze() exits via sys.exit on CLI errors
+            A_STATE["error"] = str(e) or "analyze failed"
+        finally:
+            A_STATE["running"] = False
+
+    threading.Thread(target=run, daemon=True).start()
+
+
 # ---------- web UI ----------
 
 PAGE = """<!doctype html><meta charset=utf-8>
@@ -207,227 +243,379 @@ header { position: sticky; top: 0; z-index: 5; border-bottom: 1px solid var(--bo
   background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(10px); }
 .bar { max-width: 960px; margin: 0 auto; padding: .65rem 1rem;
   display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
-.wm { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 1.15rem; font-weight: 600; }
+.wm { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 1.15rem; font-weight: 600; cursor: pointer; }
 .wm i { font-style: normal; }
 .wm i:nth-of-type(1){opacity:.75} .wm i:nth-of-type(2){opacity:.55}
 .wm i:nth-of-type(3){opacity:.35} .wm i:nth-of-type(4){opacity:.18}
 #q { flex: 1; min-width: 220px; padding: .45rem .9rem; font-size: .95rem; color: var(--text);
   border: 1px solid var(--border); border-radius: 99px; background: var(--card); outline: none; }
 #q:focus { border-color: var(--accent); }
-#stats { font-size: .8rem; color: var(--muted); white-space: nowrap; }
+#score { font-size: .8rem; color: var(--ok); white-space: nowrap; }
 main { max-width: 960px; margin: 0 auto; padding: 1rem; }
-h2 { font-size: .8rem; font-weight: 600; color: var(--muted); margin: 1.6rem 0 .5rem;
-  font-family: ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .03em; }
-h3 { font-size: .95rem; margin: 1.4rem 0 .4rem; }
-#count { color: var(--muted); font-size: .82rem; margin: .6rem 0 0; }
-.hint { border: 1px dashed var(--border); border-radius: 10px; padding: .9rem 1.1rem;
-  margin: 1rem 0; color: var(--muted); font-size: .9rem; background: var(--card); }
-.card, .finding { background: var(--card); border: 1px solid var(--border); border-radius: 10px;
-  padding: .65rem .9rem; margin: .5rem 0; transition: border-color .15s; }
-.card:hover { border-color: light-dark(#c9c9d2, #3a3a45); }
+.home { text-align: center; padding: 3.2rem 1rem 1.5rem; }
+.big { font-size: 1.45rem; line-height: 1.45; max-width: 34rem; margin: 0 auto; font-weight: 400; }
+.big b { color: var(--accent); }
+.sub { color: var(--muted); margin: .9rem auto 1.8rem; max-width: 30rem; }
+.sub b { color: var(--text); }
+.sub.err { color: var(--danger); }
+button.primary { background: var(--accent); color: #fff; border: none; border-radius: 99px;
+  padding: .65rem 1.7rem; font-size: 1rem; cursor: pointer; }
+button.primary:disabled { opacity: .55; cursor: default; }
+button.ghost { background: none; border: 1px solid var(--border); color: var(--muted);
+  border-radius: 99px; padding: .6rem 1.4rem; font-size: .95rem; cursor: pointer; }
+button.ghost:hover { color: var(--text); }
+.links { margin-top: 1.6rem; font-size: .84rem; }
+.links a { color: var(--muted); text-decoration: underline; cursor: pointer; margin: 0 .6rem; }
+.qwrap { max-width: 620px; margin: 1.8rem auto; }
+.qprog { text-align: center; color: var(--muted); font-size: .8rem; margin-bottom: .7rem; }
+.qcard { background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+  padding: 1.15rem 1.4rem; border-left-width: 4px; }
+.qq { font-size: 1.12rem; font-weight: 600; margin: 0 0 .35rem; }
+.qdetail { color: var(--muted); font-size: .92rem; margin: 0 0 .6rem; }
+.mrow { display: flex; align-items: flex-start; gap: .7rem; border-top: 1px solid var(--border); padding: .55rem 0; }
+.mrow details { flex: 1; min-width: 0; }
+.mrow summary { cursor: pointer; font-size: .92rem; list-style: none; }
+.mrow summary::-webkit-details-marker { display: none; }
+.proj-tag { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .72rem;
+  color: var(--muted); margin-left: .45rem; white-space: nowrap; }
+.mbody { color: var(--muted); font-size: .85rem; margin-top: .3rem; }
+button.forget { border: 1px solid transparent; background: none; color: var(--muted);
+  border-radius: 99px; padding: .15rem .8rem; cursor: pointer; font-size: .82rem; flex-shrink: 0; }
+button.forget:hover { background: var(--danger); color: #fff; }
+.qbtns { display: flex; gap: .7rem; justify-content: center; margin-top: 1.2rem; }
+.proj { border: 1px solid var(--border); border-radius: 10px; background: var(--card); margin: .45rem 0; }
+.proj > summary { padding: .55rem .95rem; cursor: pointer; font-size: .85rem;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; display: flex; align-items: center; gap: .6rem; }
+.proj > summary .n { margin-left: auto; color: var(--muted); font-size: .75rem; }
+.card { border-top: 1px solid var(--border); padding: .6rem .95rem; }
 .card .top { display: flex; gap: .55rem; align-items: baseline; }
-.card b { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .88rem; font-weight: 600; }
+.card .t { font-size: .92rem; flex: 1; }
 .badge { font-size: .68rem; padding: .12rem .55rem; border-radius: 99px;
-  background: light-dark(#ececf1, #26262e); color: var(--muted); cursor: pointer; }
+  background: light-dark(#ececf1, #26262e); color: var(--muted); white-space: nowrap; }
 .t-project { background: color-mix(in srgb, var(--info) 14%, transparent); color: var(--info); }
 .t-user { background: color-mix(in srgb, #8b5cf6 14%, transparent); color: #8b5cf6; }
 .t-feedback { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
 .t-reference { background: color-mix(in srgb, #12a594 14%, transparent); color: #12a594; }
-.card .top button { margin-left: auto; border: 1px solid transparent; background: none;
-  color: var(--muted); border-radius: 6px; padding: .1rem .6rem; cursor: pointer; font-size: .8rem; }
-.card:hover .top button { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
-.card .top button.arm, .card .top button:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
-.desc { color: var(--muted); font-size: .88rem; margin-top: .15rem; }
-details { margin-top: .3rem; }
-summary { cursor: pointer; font-size: .78rem; color: var(--muted); }
+.desc { color: var(--muted); font-size: .85rem; margin-top: .1rem; }
+details.body { margin-top: .25rem; }
+details.body summary { cursor: pointer; font-size: .76rem; color: var(--muted); }
 pre { white-space: pre-wrap; background: light-dark(#f1f1f4, #141419); border: 1px solid var(--border);
   padding: .6rem .8rem; border-radius: 8px; font-size: .78rem; overflow-x: auto; }
-.date { font-size: .72rem; color: var(--muted); }
-.finding b { display: block; margin-bottom: .15rem; font-size: .9rem; }
-.finding p { margin: .2rem 0; font-size: .88rem; color: var(--muted); }
-.chip { display: inline-block; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .72rem;
-  background: light-dark(#ececf1, #26262e); border-radius: 6px; padding: .08rem .45rem;
-  margin: .2rem .25rem 0 0; cursor: pointer; color: var(--text); }
-.chip:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
-.k-contradictions { border-left: 3px solid var(--danger); }
-.k-stale { border-left: 3px solid var(--warn); }
-.k-duplicates { border-left: 3px solid var(--info); }
-.k-ops { border-left: 3px solid var(--ok); }
-.op-kind { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .72rem;
-  font-weight: 700; margin-right: .35rem; color: var(--ok); }
-.finding .apply { float: right; border: 1px solid color-mix(in srgb, var(--ok) 50%, transparent);
-  background: none; color: var(--ok); border-radius: 6px; padding: .12rem .7rem; cursor: pointer; font-size: .8rem; }
-.finding .apply:hover { background: var(--ok); color: #fff; }
-.finding.done { opacity: .45; }
+#count { color: var(--muted); font-size: .82rem; margin: .6rem 0 0; }
+#toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 1.3rem; z-index: 9;
+  background: light-dark(#26262e, #e9e9ee); color: light-dark(#fff, #16161a);
+  padding: .55rem 1.1rem; border-radius: 99px; font-size: .86rem; box-shadow: 0 6px 24px #0005; }
+#toast a { color: light-dark(#a5a5ff, #4a4ad0); cursor: pointer; margin-left: .7rem; text-decoration: underline; }
 footer { max-width: 960px; margin: 2.5rem auto 0; padding: 1rem; border-top: 1px solid var(--border);
   color: var(--muted); font-size: .78rem; text-align: center; }
 footer a { color: var(--accent); text-decoration: none; }
 </style>
 <header><div class=bar>
-  <span class=wm>amn<i>e</i><i>s</i><i>i</i><i>a</i></span>
-  <input id=q placeholder="Search memories&hellip;" autofocus>
-  <span id=stats></span>
+  <span class=wm id=wmk>amn<i>e</i><i>s</i><i>i</i><i>a</i></span>
+  <input id=q placeholder="Search everything your agent remembers&hellip;">
+  <span id=score></span>
 </div></header>
 <main>
-<div id=count></div>
-<div id=analysis></div>
-<div id=list></div>
+<section id=home></section>
+<section id=queue hidden></section>
+<section id=browse hidden></section>
 </main>
-<footer>deletes are reversible &mdash; files move to <code>~/.claude/memory-trash/</code>
+<div id=toast hidden></div>
+<footer>nothing is ever lost &mdash; forgotten memories move to <code>~/.claude/memory-trash/</code>
 &middot; <a href="https://github.com/tiny-cloud-ventures/amnesia">github</a> &middot; MIT</footer>
 <script>
-let mems = [], findings = null;
+let mems = [], analysis = null, findings = [], byRef = {};
+let qtotal = 0, qdone = 0, cleaned = 0, view = 'home', lastDel = null, toastTimer = null;
+let status = { running: false, error: null };
 const $ = id => document.getElementById(id);
-const TITLES = { contradictions: 'Contradictions', stale: 'Stale / superseded', duplicates: 'Duplicates' };
+const TYPE_LABEL = { project: 'project', feedback: 'rule', user: 'about you', reference: 'link' };
+const KIND_COLOR = { conflict: 'var(--danger)', misfiled: 'var(--info)', twice: 'var(--accent)', stale: 'var(--warn)' };
+const KIND_SKIP = { conflict: 'Keep both', misfiled: 'Leave it', twice: 'Leave it', stale: 'Still true' };
+
 function prettyProj(p) {
   const m = p.match(/^-(?:Users|home)-[^-]+(.*)$/);
   return m ? '~' + (m[1] ? m[1].replace('-', '/') : '') : p;
 }
-async function load() {
-  mems = await (await fetch('/api/memories')).json();
-  const r = await fetch('/api/analysis');
-  findings = r.ok ? await r.json() : null;
-  $('stats').textContent = mems.length + ' memories · ' +
-    new Set(mems.map(m => m.project)).size + ' projects';
-  render(); renderAnalysis();
-}
-function chipEl(label, query) {
-  const c = document.createElement('span'); c.className = 'chip'; c.textContent = label;
-  c.onclick = () => { $('q').value = query; render(); };
-  return c;
-}
-function findingEl(kind, title, detail) {
-  const d = document.createElement('div'); d.className = 'finding k-' + kind;
-  const t = document.createElement('b'); t.textContent = title;
-  const p = document.createElement('p'); p.textContent = detail;
-  d.append(t, p);
-  return d;
-}
-function renderTriage(box) {
-  const rows = [];
-  const byFile = {};
-  for (const m of mems) (byFile[m.file] = byFile[m.file] || []).push(m);
-  for (const [f, ms] of Object.entries(byFile)) {
-    if (ms.length < 2) continue;
-    const d = findingEl('duplicates', f + ' exists in ' + ms.length + ' projects',
-      'Same memory file in multiple places — likely cross-repo pollution or a consolidation candidate.');
-    for (const m of ms) d.appendChild(chipEl(prettyProj(m.project) + '/' + f, f));
-    rows.push(d);
+function titleOf(m) {
+  let d = (m.description || '').trim().replace(/^"+|"+$/g, '');
+  if (!d) d = (m.name || m.file.replace(/\\.md$/, '')).replace(/[-_]/g, ' ');
+  for (const sep of [' — ', '; ', '. ']) {
+    const i = d.indexOf(sep);
+    if (i > 12) { d = d.slice(0, i); break; }
   }
-  const old = mems.filter(m => (Date.now() / 1000 - m.mtime) > 90 * 86400)
-    .sort((a, b) => a.mtime - b.mtime).slice(0, 6);
-  if (old.length) {
-    const d = findingEl('stale', 'Untouched for 90+ days',
-      'Oldest memories — verify these still describe reality before your agent acts on them.');
-    for (const m of old) d.appendChild(chipEl(m.file, m.file));
-    rows.push(d);
+  return d.length > 95 ? d.slice(0, 93) + '…' : d;
+}
+function buildRefs() {
+  byRef = {};
+  for (const m of mems) byRef[m.project + '/' + m.file] = m;
+}
+function show(id) {
+  view = id;
+  for (const s of ['home', 'queue', 'browse']) $(s).hidden = s !== id;
+}
+function renderScore() {
+  $('score').textContent = cleaned > 0 ? '✓ ' + cleaned + ' cleaned' : '';
+}
+
+function buildFindings() {
+  const out = [];
+  if (analysis) {
+    for (const it of analysis.contradictions || [])
+      out.push({ kind: 'conflict', q: 'These can’t both be true', title: it.title, detail: it.detail, files: it.files || [] });
+    for (const o of analysis.ops || []) out.push(o.op === 'move'
+      ? { kind: 'misfiled', q: 'This seems filed in the wrong project', detail: o.reason, files: [o.from], op: o }
+      : { kind: 'twice', q: 'Your agent remembers this twice', detail: o.reason, files: [o.from, o.to], op: o });
+    for (const it of analysis.stale || [])
+      out.push({ kind: 'stale', q: 'This looks out of date', title: it.title, detail: it.detail, files: it.files || [] });
+    for (const it of analysis.duplicates || [])
+      out.push({ kind: 'twice', q: 'Your agent remembers this twice', title: it.title, detail: it.detail, files: it.files || [] });
+  } else {
+    const byFile = {};
+    for (const m of mems) (byFile[m.file] = byFile[m.file] || []).push(m);
+    for (const [f, ms] of Object.entries(byFile)) if (ms.length > 1)
+      out.push({ kind: 'twice', q: 'Remembered in ' + ms.length + ' different projects',
+        detail: 'The same memory lives in several places — usually only one copy is still right.',
+        files: ms.map(m => m.project + '/' + m.file) });
+    const old = mems.filter(m => (Date.now() / 1000 - m.mtime) > 90 * 86400)
+      .sort((a, b) => a.mtime - b.mtime).slice(0, 5);
+    for (const m of old)
+      out.push({ kind: 'stale', q: 'Untouched for ' + Math.round((Date.now() / 1000 - m.mtime) / 86400) + ' days',
+        detail: 'Old memories drift out of date. Does this still describe reality?',
+        files: [m.project + '/' + m.file] });
   }
-  if (!rows.length) return false;
-  const h = document.createElement('h3'); h.textContent = 'Review first';
-  box.appendChild(h);
-  for (const d of rows) box.appendChild(d);
+  return out;
+}
+
+async function deleteMem(m) {
+  const r = await fetch('/api/delete', { method: 'POST',
+    body: JSON.stringify({ project: m.project, file: m.file }) });
+  if (!r.ok) { alert('failed: ' + (await r.json()).error); return false; }
+  mems = mems.filter(x => x !== m);
+  delete byRef[m.project + '/' + m.file];
+  cleaned++; renderScore(); toast(m);
   return true;
 }
-function renderAnalysis() {
-  const box = $('analysis'); box.textContent = '';
-  if (!findings) {
-    renderTriage(box);
-    const hint = document.createElement('div'); hint.className = 'hint';
-    const c = document.createElement('code'); c.textContent = 'amnesia analyze';
-    hint.append('For the full audit, run ', c,
-      ' in a terminal — it checks for contradictions, stale facts, duplicates, and misfiled memories.');
-    box.appendChild(hint); return;
-  }
-  const ops = findings.ops || [];
-  for (const kind of ['contradictions']) {
-    const items = findings[kind] || [];
-    if (!items.length) continue;
-    const h = document.createElement('h3'); h.textContent = 'Review first — ' + TITLES[kind].toLowerCase() + ' (' + items.length + ')';
-    box.appendChild(h);
-    for (const it of items) {
-      const d = findingEl(kind, it.title, it.detail);
-      for (const f of it.files || []) d.appendChild(chipEl(f, f.split('/').pop()));
-      box.appendChild(d);
-    }
-  }
-  if (ops.length) {
-    const h = document.createElement('h3'); h.textContent = 'Suggested consolidations (' + ops.length + ')';
-    box.appendChild(h);
-    for (const o of ops) {
-      const d = document.createElement('div'); d.className = 'finding k-ops';
-      const btn = document.createElement('button'); btn.className = 'apply'; btn.textContent = 'apply';
-      btn.onclick = async () => {
-        const r = await fetch('/api/apply', { method: 'POST',
-          body: JSON.stringify({ op: o.op, from: o.from, to: o.to }) });
-        if (r.ok) {
-          d.classList.add('done'); btn.disabled = true; btn.textContent = 'applied';
-          mems = await (await fetch('/api/memories')).json(); render();
-        } else alert('apply failed: ' + (await r.json()).error);
-      };
-      const t = document.createElement('b');
-      const k = document.createElement('span'); k.className = 'op-kind'; k.textContent = o.op.toUpperCase();
-      t.append(k, document.createTextNode(o.from + ' → ' + o.to));
-      const p = document.createElement('p'); p.textContent = o.reason;
-      d.append(btn, t, p);
-      d.appendChild(chipEl(o.from, o.from.split('/').pop()));
-      box.appendChild(d);
-    }
-  }
-  for (const kind of ['stale', 'duplicates']) {
-    const items = findings[kind] || [];
-    if (!items.length) continue;
-    const h = document.createElement('h3'); h.textContent = TITLES[kind] + ' (' + items.length + ')';
-    box.appendChild(h);
-    for (const it of items) {
-      const d = findingEl(kind, it.title, it.detail);
-      for (const f of it.files || []) d.appendChild(chipEl(f, f.split('/').pop()));
-      box.appendChild(d);
-    }
-  }
+function toast(m) {
+  lastDel = m;
+  const t = $('toast'); t.textContent = '';
+  t.append('Forgot “' + titleOf(m).slice(0, 42) + '”');
+  const u = document.createElement('a'); u.textContent = 'undo';
+  u.onclick = async () => {
+    const r = await fetch('/api/restore', { method: 'POST',
+      body: JSON.stringify({ project: lastDel.project, file: lastDel.file }) });
+    if (!r.ok) { alert('undo failed: ' + (await r.json()).error); return; }
+    mems.push(lastDel); byRef[lastDel.project + '/' + lastDel.file] = lastDel;
+    cleaned--; renderScore(); t.hidden = true;
+    if (view === 'browse') renderBrowse(); else if (view === 'home') renderHome();
+  };
+  t.appendChild(u); t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 7000);
 }
-function render() {
+
+function renderHome() {
+  show('home');
+  const h = $('home'); h.textContent = '';
+  const wrap = document.createElement('div'); wrap.className = 'home';
+  const big = document.createElement('p'); big.className = 'big';
+  const nm = document.createElement('b'); nm.textContent = mems.length + ' things';
+  const np = document.createElement('b');
+  np.textContent = new Set(mems.map(m => m.project)).size + ' projects';
+  big.append('Your agent remembers ', nm, ' about you, across ', np, '.');
+  wrap.appendChild(big);
+  const sub = document.createElement('p'); sub.className = 'sub';
+  const btn = document.createElement('button'); btn.className = 'primary';
+  if (!mems.length) {
+    big.textContent = 'No memories found — your agent has a clean slate.';
+    sub.textContent = 'Memories appear in ~/.claude/projects/ as you use Claude Code.';
+    wrap.appendChild(sub); h.appendChild(wrap); return;
+  }
+  if (status.running) {
+    sub.textContent = 'Reading every memory and cross-checking them… this takes a few minutes.';
+    btn.textContent = 'Scanning…'; btn.disabled = true;
+  } else if (status.error) {
+    sub.className = 'sub err'; sub.textContent = status.error;
+    btn.textContent = 'Try again'; btn.onclick = doScan;
+  } else if (findings.length) {
+    const n = document.createElement('b'); n.textContent = findings.length + ' of them';
+    sub.append(n, analysis ? ' need a decision from you.' : ' look worth a glance.');
+    btn.textContent = analysis ? 'Review them' : 'Scan my memories';
+    btn.onclick = analysis ? startQueue : doScan;
+  } else if (analysis) {
+    sub.textContent = 'Everything checks out — no conflicts, nothing stale. ✓';
+    btn.textContent = 'Rescan'; btn.onclick = doScan;
+  } else {
+    sub.textContent = 'A scan reads them all and flags anything conflicting, stale, or misfiled.';
+    btn.textContent = 'Scan my memories'; btn.onclick = doScan;
+  }
+  wrap.appendChild(sub); wrap.appendChild(btn);
+  const links = document.createElement('div'); links.className = 'links';
+  if (!analysis && findings.length && !status.running) {
+    const a = document.createElement('a'); a.textContent = 'review ' + findings.length + ' quick flags';
+    a.onclick = startQueue; links.appendChild(a);
+  }
+  if (analysis && findings.length && !status.running) {
+    const a = document.createElement('a'); a.textContent = 'rescan'; a.onclick = doScan;
+    links.appendChild(a);
+  }
+  const b = document.createElement('a'); b.textContent = 'browse everything';
+  b.onclick = () => renderBrowse(); links.appendChild(b);
+  wrap.appendChild(links);
+  h.appendChild(wrap);
+}
+
+async function doScan() {
+  await fetch('/api/analyze', { method: 'POST' });
+  status.running = true; status.error = null; renderHome();
+  const poll = setInterval(async () => {
+    status = await (await fetch('/api/status')).json();
+    if (!status.running) {
+      clearInterval(poll);
+      if (!status.error) {
+        const r = await fetch('/api/analysis');
+        analysis = r.ok ? await r.json() : null;
+        findings = buildFindings(); qdone = 0;
+      }
+      if (view === 'home') renderHome();
+    }
+  }, 4000);
+}
+
+function mrowEl(ref, actions, consume) {
+  const row = document.createElement('div'); row.className = 'mrow';
+  const m = byRef[ref];
+  const det = document.createElement('details');
+  const sum = document.createElement('summary');
+  if (!m) { sum.textContent = ref; det.appendChild(sum); row.appendChild(det); return row; }
+  sum.textContent = titleOf(m);
+  const tag = document.createElement('span'); tag.className = 'proj-tag';
+  tag.textContent = prettyProj(m.project); sum.appendChild(tag);
+  const body = document.createElement('div'); body.className = 'mbody';
+  const pre = document.createElement('pre'); pre.textContent = m.body;
+  body.appendChild(pre);
+  det.append(sum, body);
+  row.appendChild(det);
+  if (actions) {
+    const f = document.createElement('button'); f.className = 'forget'; f.textContent = 'forget';
+    f.onclick = async () => { if (await deleteMem(m)) consume(); };
+    row.appendChild(f);
+  }
+  return row;
+}
+
+function startQueue() { qtotal = findings.length + qdone; renderQueue(); }
+function renderQueue() {
+  show('queue');
+  const box = $('queue'); box.textContent = '';
+  const wrap = document.createElement('div'); wrap.className = 'qwrap';
+  if (!findings.length) {
+    const done = document.createElement('div'); done.className = 'home';
+    const big = document.createElement('p'); big.className = 'big';
+    big.textContent = '✨ All done.';
+    const sub = document.createElement('p'); sub.className = 'sub';
+    sub.textContent = 'You went through ' + qtotal + ' — your agent’s memory is sharper for it.';
+    const btn = document.createElement('button'); btn.className = 'primary';
+    btn.textContent = 'Back'; btn.onclick = renderHome;
+    done.append(big, sub, btn); wrap.appendChild(done);
+    box.appendChild(wrap); return;
+  }
+  const f = findings[0];
+  const consume = () => { findings.shift(); qdone++; renderQueue(); };
+  const prog = document.createElement('div'); prog.className = 'qprog';
+  prog.textContent = (qdone + 1) + ' of ' + qtotal;
+  const card = document.createElement('div'); card.className = 'qcard';
+  card.style.borderLeftColor = KIND_COLOR[f.kind];
+  const q = document.createElement('p'); q.className = 'qq'; q.textContent = f.q;
+  card.appendChild(q);
+  const dt = document.createElement('p'); dt.className = 'qdetail';
+  dt.textContent = (f.title ? f.title + ' — ' : '') + (f.detail || '');
+  card.appendChild(dt);
+  const perRow = !f.op && f.kind !== 'misfiled';
+  for (const ref of f.files) card.appendChild(mrowEl(ref, perRow, consume));
+  const btns = document.createElement('div'); btns.className = 'qbtns';
+  if (f.op) {
+    const go = document.createElement('button'); go.className = 'primary';
+    go.textContent = f.op.op === 'move' ? 'Move it' : 'Combine them';
+    go.onclick = async () => {
+      const r = await fetch('/api/apply', { method: 'POST',
+        body: JSON.stringify({ op: f.op.op, from: f.op.from, to: f.op.to }) });
+      if (!r.ok) { alert('failed: ' + (await r.json()).error); return; }
+      mems = await (await fetch('/api/memories')).json(); buildRefs();
+      cleaned++; renderScore(); consume();
+    };
+    btns.appendChild(go);
+  }
+  const skip = document.createElement('button'); skip.className = 'ghost';
+  skip.textContent = KIND_SKIP[f.kind]; skip.onclick = consume;
+  btns.appendChild(skip);
+  card.appendChild(btns);
+  const back = document.createElement('div'); back.className = 'links';
+  back.style.textAlign = 'center';
+  const a = document.createElement('a'); a.textContent = 'finish later'; a.onclick = renderHome;
+  back.appendChild(a);
+  wrap.append(prog, card, back);
+  box.appendChild(wrap);
+}
+
+function cardEl(m) {
+  const card = document.createElement('div'); card.className = 'card';
+  const top = document.createElement('div'); top.className = 'top';
+  const t = document.createElement('span'); t.className = 't'; t.textContent = titleOf(m);
+  const badge = document.createElement('span');
+  badge.className = 'badge t-' + (m.type || 'unknown');
+  badge.textContent = TYPE_LABEL[m.type] || m.type || '?';
+  const del = document.createElement('button'); del.className = 'forget'; del.textContent = 'forget';
+  del.onclick = async () => { if (await deleteMem(m)) renderBrowse(); };
+  top.append(t, badge, del);
+  const det = document.createElement('details'); det.className = 'body';
+  const sum = document.createElement('summary'); sum.textContent = 'details';
+  const desc = document.createElement('div'); desc.className = 'desc'; desc.textContent = m.description;
+  const pre = document.createElement('pre'); pre.textContent = m.body;
+  det.append(sum, desc, pre);
+  card.append(top, det);
+  return card;
+}
+function renderBrowse() {
+  show('browse');
+  const box = $('browse'); box.textContent = '';
   const q = $('q').value.toLowerCase();
   const shown = mems.filter(m =>
     [m.project, m.file, m.name, m.description, m.type, m.body].join(' ').toLowerCase().includes(q));
-  $('count').textContent = shown.length + ' of ' + mems.length + ' memories';
-  const list = $('list'); list.textContent = '';
-  let proj = null;
-  for (const m of shown) {
-    if (m.project !== proj) {
-      proj = m.project;
-      const h = document.createElement('h2'); h.textContent = prettyProj(proj); h.title = proj;
-      list.appendChild(h);
-    }
-    const card = document.createElement('div'); card.className = 'card';
-    const top = document.createElement('div'); top.className = 'top';
-    const name = document.createElement('b'); name.textContent = m.file;
-    const badge = document.createElement('span');
-    badge.className = 'badge t-' + (m.type || 'unknown'); badge.textContent = m.type || '?';
-    badge.onclick = () => { $('q').value = m.type || ''; render(); };
-    const date = document.createElement('span'); date.className = 'date';
-    date.textContent = new Date(m.mtime * 1000).toLocaleDateString();
-    const del = document.createElement('button'); del.textContent = 'delete';
-    let armed = false;
-    const disarm = () => { armed = false; del.textContent = 'delete'; del.classList.remove('arm'); };
-    del.onmouseleave = disarm;
-    del.onclick = async () => {
-      if (!armed) { armed = true; del.textContent = 'confirm'; del.classList.add('arm'); return; }
-      const r = await fetch('/api/delete', { method: 'POST',
-        body: JSON.stringify({ project: m.project, file: m.file }) });
-      if (r.ok) { mems = mems.filter(x => x !== m); render(); }
-      else { disarm(); alert('delete failed: ' + (await r.json()).error); }
-    };
-    top.append(name, badge, date, del);
-    const desc = document.createElement('div'); desc.className = 'desc'; desc.textContent = m.description;
-    const det = document.createElement('details');
-    const sum = document.createElement('summary'); sum.textContent = 'body';
-    const pre = document.createElement('pre'); pre.textContent = m.body;
-    det.append(sum, pre);
-    card.append(top, desc, det);
-    list.appendChild(card);
+  const count = document.createElement('div'); count.id = 'count';
+  count.textContent = q ? shown.length + ' matches' : shown.length + ' memories — click a project to look inside';
+  box.appendChild(count);
+  const groups = {};
+  for (const m of shown) (groups[m.project] = groups[m.project] || []).push(m);
+  for (const [proj, ms] of Object.entries(groups)) {
+    const det = document.createElement('details'); det.className = 'proj'; det.open = !!q;
+    const sum = document.createElement('summary'); sum.title = proj;
+    const nm = document.createElement('span'); nm.textContent = prettyProj(proj);
+    const n = document.createElement('span'); n.className = 'n';
+    n.textContent = ms.length + (ms.length === 1 ? ' memory' : ' memories');
+    sum.append(nm, n);
+    det.appendChild(sum);
+    for (const m of ms) det.appendChild(cardEl(m));
+    box.appendChild(det);
   }
+  const links = document.createElement('div'); links.className = 'links';
+  links.style.textAlign = 'center';
+  const a = document.createElement('a'); a.textContent = 'back'; a.onclick = () => { $('q').value = ''; renderHome(); };
+  links.appendChild(a);
+  box.appendChild(links);
 }
-$('q').oninput = render;
+
+$('q').oninput = () => { $('q').value ? renderBrowse() : renderHome(); };
+$('wmk').onclick = renderHome;
+async function load() {
+  mems = await (await fetch('/api/memories')).json();
+  buildRefs();
+  const r = await fetch('/api/analysis');
+  analysis = r.ok ? await r.json() : null;
+  try { status = await (await fetch('/api/status')).json(); } catch (e) {}
+  findings = buildFindings();
+  renderScore(); renderHome();
+  if (status.running) doScan();
+}
 load();
 </script>"""
 
@@ -451,14 +639,21 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, ANALYSIS.read_bytes())
             else:
                 self._send(404, {"error": "no analysis yet"})
+        elif self.path == "/api/status":
+            self._send(200, A_STATE)
         else:
             self._send(404, {"error": "not found"})
 
     def do_POST(self):
         try:
+            if self.path == "/api/analyze":
+                start_analyze()
+                return self._send(200, {"ok": True})
             req = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
             if self.path == "/api/delete":
                 delete_memory(req["project"], req["file"])
+            elif self.path == "/api/restore":
+                restore_memory(req["project"], req["file"])
             elif self.path == "/api/apply":
                 apply_op(req["op"], req["from"], req["to"])
             else:
@@ -495,6 +690,18 @@ def _check():
         idx = (mdir / "MEMORY.md").read_text()
         assert "fact.md" not in idx and "other.md" in idx, idx
         assert list_memories(root) == []
+        restore_memory("-tmp-proj", "fact.md", root, trash)
+        assert (mdir / "fact.md").is_file() and not (trash / "-tmp-proj" / "fact.md").exists()
+        assert "(fact.md)" in (mdir / "MEMORY.md").read_text()
+        assert len(list_memories(root)) == 1
+        try:
+            restore_memory("-tmp-proj", "../evil.md", root, trash); assert False
+        except ValueError:
+            pass
+        try:
+            restore_memory("-tmp-proj", "fact.md", root, trash); assert False  # not in trash
+        except FileNotFoundError:
+            pass
     with tempfile.TemporaryDirectory() as td:
         root, trash = Path(td) / "projects", Path(td) / "trash"
         a, b = root / "-proj-a" / "memory", root / "-proj-b" / "memory"
@@ -536,7 +743,7 @@ def main():
     else:
         port = int(argv[0]) if argv and argv[0].isdigit() else 8780
         print(f"amnesia on http://localhost:{port} — trash: {TRASH}")
-        HTTPServer(("127.0.0.1", port), Handler).serve_forever()
+        ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
 
 
 if __name__ == "__main__":

@@ -4,11 +4,14 @@
 
 Claude Code quietly accumulates memory files per project directory under `~/.claude/projects/*/memory/`. Over months that store rots: facts go stale ("service X is live" — it was retired weeks ago), the same rule gets saved three times in three projects, and memories from one project leak into sessions for another. Research on agent memory calls this *memory contamination*, and polluted memory measurably makes agents worse than no memory at all.
 
-amnesia gives you:
+amnesia is one sentence, one button, one question at a time:
 
-- **One UI for all of it** — every memory across every project directory, searchable, grouped by project, with type badges and dates.
-- **One-click delete, zero-risk** — deleted memories move to `~/.claude/memory-trash/` (restore = `mv` it back) and the project's `MEMORY.md` index is scrubbed to match.
-- **A self-audit** — `amnesia analyze` feeds your whole memory store to your own `claude` CLI and gets back a structured report of **contradictions**, **stale/superseded facts**, and **duplicates**, rendered in the UI with click-to-jump links to the offending memories.
+1. Open it: *"Your agent remembers 86 things about you, across 21 projects."* One button: **Scan**.
+2. The scan feeds your whole store to your own `claude` CLI and flags **contradictions**, **stale facts**, **duplicates**, and **misfiled memories**.
+3. **Review** walks you through the flags one at a time, in plain language — *"These can't both be true"*, *"This seems filed in the wrong project"* — with one-word answers: Forget, Move it, Combine them, Keep both.
+4. Forgetting is one click and reversible: files move to `~/.claude/memory-trash/`, undo is right there in the toast, and the `MEMORY.md` index stays in sync.
+
+Search and a browse-everything view exist for when you want them — they're one click away, never the default.
 
 No API key. No server. No telemetry. Single file, Python stdlib only. The only thing that ever reads your memories is the Claude account you already use.
 
@@ -28,12 +31,10 @@ python3 amnesia.py
 ## Use
 
 ```sh
-amnesia            # UI at http://localhost:8780
-amnesia analyze    # audit memories via your claude CLI, then refresh the UI
+amnesia            # UI at http://localhost:8780 — scan, review, done
+amnesia analyze    # same audit, from the terminal
 amnesia 9000       # different port
 ```
-
-Open the UI, search for anything ("postgres", a project name, a date), read the full body of any memory, delete what's wrong. Run `analyze` and the top of the page shows what Claude itself thinks is contradictory, stale, or duplicated — click a file chip to jump to that memory.
 
 ## Why this matters
 
