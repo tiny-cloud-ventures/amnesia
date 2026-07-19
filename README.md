@@ -1,18 +1,22 @@
-# amnesia
+<p align="center">
+  <img src="docs/logo.svg" alt="amnesia — the word fading from white into darkness" width="720">
+</p>
 
 **Give your agent selective amnesia. See, search, and clean every memory Claude Code has saved about you — and let Claude audit its own memory for contradictions.**
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue) ![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-3776ab) ![Dependencies: zero](https://img.shields.io/badge/dependencies-zero-brightgreen)
 
+**The counts are live, not fixed.** Amnesia discovers every saved memory under `~/.claude/projects/*/memory/` and reports the actual total for your store. The screenshot below is one real store, not a limit.
+
 ![Your agent's memory, mapped](docs/map.png)
 
-*A real store: 84 memories across 21 projects. Every dot is one memory, colors are projects, lines are the references between them — contradictions glow red after a scan. Live, draggable, and clickable in the built-in UI.*
+*Every dot is one memory, colors are projects, lines are the references between them — contradictions glow red after a scan. Live, draggable, and clickable in the built-in UI.*
 
 Claude Code quietly accumulates memory files per project directory under `~/.claude/projects/*/memory/`. Over months that store rots: facts go stale ("service X is live" — it was retired weeks ago), the same rule gets saved three times in three projects, and memories from one project leak into sessions for another. Research on agent memory calls this *memory contamination*, and polluted memory measurably makes agents worse than no memory at all.
 
 amnesia is one sentence, one button, one question at a time:
 
-1. Open it: *"Your agent remembers 84 things about you, across 21 projects."* One button: **Scan**.
+1. Open it: Amnesia counts your store live and tells you exactly how many memories and projects it found. One button: **Scan**.
 2. The scan feeds your whole store to your own `claude` CLI and flags **contradictions**, **stale facts**, **duplicates**, and **misfiled memories**.
 3. **Review** walks you through the flags one at a time, in plain language — *"These can't both be true"*, *"This seems filed in the wrong project"* — with one-word answers: Forget, Move it, Combine them, Keep both. Decisions survive reloads until the next successful scan, which asks again from fresh evidence. In a hurry? **Fix all** previews every confident consolidation, then applies them as one undoable batch.
 4. Every change is reversible: Amnesia snapshots each affected memory and index before changing it. Undo is right there in the toast and under **Recent changes**; it refuses to overwrite a file you edited afterward.

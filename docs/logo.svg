@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 240" role="img" aria-labelledby="title desc">
+  <title id="title">amnesia</title>
+  <desc id="desc">The word amnesia fading from white through grey into darkness.</desc>
+  <defs>
+    <linearGradient id="fade" x1="270" y1="0" x2="705" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f7f7fa"/>
+      <stop offset="0.42" stop-color="#f7f7fa"/>
+      <stop offset="0.62" stop-color="#aaaab4"/>
+      <stop offset="0.79" stop-color="#55555f"/>
+      <stop offset="0.92" stop-color="#24242b"/>
+      <stop offset="1" stop-color="#111116" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="952" height="232" rx="34" fill="#101014" stroke="#292932" stroke-width="2"/>
+  <text x="480" y="151" fill="url(#fade)" text-anchor="middle"
+        font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
+        font-size="104" font-weight="650" letter-spacing="-6">amnesia</text>
+</svg>
