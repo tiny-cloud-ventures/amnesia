@@ -277,6 +277,8 @@ body[data-view=map] footer { display: none; }
 .home { text-align: center; padding: 3.2rem 1rem 1.5rem; }
 .big { font-size: 1.45rem; line-height: 1.45; max-width: 34rem; margin: 0 auto; font-weight: 400; }
 .big b { color: var(--accent); }
+.cost { color: var(--muted); font-size: .88rem; margin: .5rem auto 0; }
+.cost b { color: var(--warn); font-weight: 600; }
 .sub { color: var(--muted); margin: .9rem auto 1.8rem; max-width: 30rem; }
 .sub b { color: var(--text); }
 .sub.err { color: var(--danger); }
@@ -357,6 +359,10 @@ const TYPE_LABEL = { project: 'project', feedback: 'rule', user: 'about you', re
 const KIND_COLOR = { conflict: 'var(--danger)', misfiled: 'var(--info)', twice: 'var(--accent)', stale: 'var(--warn)' };
 const KIND_SKIP = { conflict: 'Keep both', misfiled: 'Leave it', twice: 'Leave it', stale: 'Still true' };
 
+// ponytail: chars/4 token estimate — real tokenizers disagree by ~10% anyway
+const tokOf = m => Math.max(1, Math.round((m.body.length + m.description.length) / 4));
+const idxTok = () => Math.round(mems.reduce((s, m) =>
+  s + m.name.length + m.file.length + m.description.length + 8, 0) / 4);
 function prettyProj(p) {
   const m = p.match(/^-(?:Users|home)-[^-]+(.*)$/);
   return m ? '~' + (m[1] ? m[1].replace('-', '/') : '') : p;
@@ -569,7 +575,9 @@ function openNodeCard(n) {
   const badge = document.createElement('span');
   badge.className = 'badge t-' + (n.m.type || 'unknown');
   badge.textContent = TYPE_LABEL[n.m.type] || n.m.type || '?';
-  top.append(t, badge);
+  const tk = document.createElement('span'); tk.className = 'badge';
+  tk.textContent = '~' + tokOf(n.m) + ' tok';
+  top.append(t, badge, tk);
   const proj = document.createElement('div'); proj.className = 'desc';
   proj.textContent = prettyProj(n.m.project);
   const det = document.createElement('details'); det.className = 'body';
@@ -612,6 +620,28 @@ async function deleteMem(m) {
   cleaned++; renderScore(); toast(m); refreshGraph();
   return true;
 }
+function flash(msg) {
+  const t = $('toast'); t.textContent = msg; t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 8000);
+}
+async function fixAll() {
+  const ops = findings.filter(f => f.op).map(f => f.op);
+  flash('Fixing ' + ops.length + '…');
+  let ok = 0;
+  for (const o of ops) {
+    const r = await fetch('/api/apply', { method: 'POST',
+      body: JSON.stringify({ op: o.op, from: o.from, to: o.to }) });
+    if (r.ok) { ok++; o.done = true; }
+  }
+  mems = await (await fetch('/api/memories')).json(); buildRefs(); refreshGraph();
+  findings = findings.filter(f => !(f.op && f.op.done));
+  qtotal = findings.length + qdone;
+  cleaned += ok; renderScore();
+  flash('Fixed ' + (ok < ops.length ? ok + ' of ' + ops.length : ok) +
+    ' — moved and combined, copies kept in the trash.');
+  if (view === 'home') renderHome(); else if (view === 'queue') renderQueue();
+}
 function toast(m) {
   lastDel = m;
   const t = $('toast'); t.textContent = '';
@@ -640,6 +670,12 @@ function renderHome() {
   np.textContent = new Set(mems.map(m => m.project)).size + ' projects';
   big.append('Your agent remembers ', nm, ' about you, across ', np, '.');
   wrap.appendChild(big);
+  if (mems.length) {
+    const cost = document.createElement('p'); cost.className = 'cost';
+    const ct = document.createElement('b'); ct.textContent = '~' + idxTok().toLocaleString() + ' tokens';
+    cost.append('Just indexing them costs ', ct, ' of context.');
+    wrap.appendChild(cost);
+  }
   const sub = document.createElement('p'); sub.className = 'sub';
   const btn = document.createElement('button'); btn.className = 'primary';
   if (!mems.length) {
@@ -672,6 +708,12 @@ function renderHome() {
     a.onclick = startQueue; links.appendChild(a);
   }
   if (analysis && findings.length && !status.running) {
+    const nops = findings.filter(f => f.op).length;
+    if (nops) {
+      const fx = document.createElement('a');
+      fx.textContent = nops > 1 ? 'fix all ' + nops + ' automatically' : 'fix it automatically';
+      fx.onclick = fixAll; links.appendChild(fx);
+    }
     const a = document.createElement('a'); a.textContent = 'rescan'; a.onclick = doScan;
     links.appendChild(a);
   }
@@ -783,9 +825,11 @@ function cardEl(m) {
   const badge = document.createElement('span');
   badge.className = 'badge t-' + (m.type || 'unknown');
   badge.textContent = TYPE_LABEL[m.type] || m.type || '?';
+  const tk = document.createElement('span'); tk.className = 'badge';
+  tk.textContent = '~' + tokOf(m) + ' tok';
   const del = document.createElement('button'); del.className = 'forget'; del.textContent = 'forget';
   del.onclick = async () => { if (await deleteMem(m)) renderBrowse(); };
-  top.append(t, badge, del);
+  top.append(t, badge, tk, del);
   const det = document.createElement('details'); det.className = 'body';
   const sum = document.createElement('summary'); sum.textContent = 'details';
   const desc = document.createElement('div'); desc.className = 'desc'; desc.textContent = m.description;

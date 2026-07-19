@@ -12,7 +12,7 @@ amnesia is one sentence, one button, one question at a time:
 
 1. Open it: *"Your agent remembers 86 things about you, across 21 projects."* One button: **Scan**.
 2. The scan feeds your whole store to your own `claude` CLI and flags **contradictions**, **stale facts**, **duplicates**, and **misfiled memories**.
-3. **Review** walks you through the flags one at a time, in plain language — *"These can't both be true"*, *"This seems filed in the wrong project"* — with one-word answers: Forget, Move it, Combine them, Keep both.
+3. **Review** walks you through the flags one at a time, in plain language — *"These can't both be true"*, *"This seems filed in the wrong project"* — with one-word answers: Forget, Move it, Combine them, Keep both. In a hurry? **Fix all** applies every confident consolidation in one click.
 4. Forgetting is one click and reversible: files move to `~/.claude/memory-trash/`, undo is right there in the toast, and the `MEMORY.md` index stays in sync.
 
 Search, a browse-everything view, and **the map** — the live force-graph above, physics hand-rolled in ~100 lines of dependency-free canvas — are each one click away, never the default.
@@ -48,11 +48,10 @@ The analyzer also proposes **consolidation ops** — MOVE a memory to the projec
 
 ## Roadmap
 
-- Bulk select + archive state (soft-disable a memory and see if anything breaks before deleting)
-- Token-count column — show what each memory costs your context window every session
+- Archive state (soft-disable a memory and see if anything breaks before deleting)
 - Supersede-don't-delete: rewrite stale facts in place with a `superseded:` marker instead of trashing
 - Gated PROMOTE op: hoist a fact to global scope only when observed in 2+ repos, with provenance
-- Graph view: entity/supersession graph across projects ("X replaced Y on date Z")
+- Memory support for more agents (Cursor rules, plain CLAUDE.md files)
 
 ## License
 
