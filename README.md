@@ -2,6 +2,8 @@
 
 **Give your agent selective amnesia. See, search, and clean every memory Claude Code has saved about you — and let Claude audit its own memory for contradictions.**
 
+![License: MIT](https://img.shields.io/badge/license-MIT-blue) ![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-3776ab) ![Dependencies: zero](https://img.shields.io/badge/dependencies-zero-brightgreen)
+
 ![Your agent's memory, mapped](docs/map.png)
 
 *A real store: 84 memories across 21 projects. Every dot is one memory, colors are projects, lines are the references between them — contradictions glow red after a scan. Live, draggable, and clickable in the built-in UI.*
@@ -10,24 +12,33 @@ Claude Code quietly accumulates memory files per project directory under `~/.cla
 
 amnesia is one sentence, one button, one question at a time:
 
-1. Open it: *"Your agent remembers 86 things about you, across 21 projects."* One button: **Scan**.
+1. Open it: *"Your agent remembers 84 things about you, across 21 projects."* One button: **Scan**.
 2. The scan feeds your whole store to your own `claude` CLI and flags **contradictions**, **stale facts**, **duplicates**, and **misfiled memories**.
 3. **Review** walks you through the flags one at a time, in plain language — *"These can't both be true"*, *"This seems filed in the wrong project"* — with one-word answers: Forget, Move it, Combine them, Keep both. In a hurry? **Fix all** applies every confident consolidation in one click.
 4. Forgetting is one click and reversible: files move to `~/.claude/memory-trash/`, undo is right there in the toast, and the `MEMORY.md` index stays in sync.
 
 Search, a browse-everything view, and **the map** — the live force-graph above, physics hand-rolled in ~100 lines of dependency-free canvas — are each one click away, never the default.
 
-No API key. No server. No telemetry. Single file, Python stdlib only. The only thing that ever reads your memories is the Claude account you already use.
-
 ## Install
 
-Requires Python 3.9+ and (for `analyze`) the [Claude Code](https://claude.com/claude-code) CLI.
+**As a Claude Code plugin** — you already have everything it needs:
+
+```
+/plugin marketplace add tiny-cloud-ventures/amnesia
+/plugin install amnesia@amnesia
+```
+
+Then `/amnesia:open` opens the UI, and `/amnesia:scan` audits your memory without leaving the session.
+
+**As a CLI** (requires Python 3.9+):
 
 ```sh
-# run it directly
 uvx --from git+https://github.com/tiny-cloud-ventures/amnesia amnesia
+```
 
-# or the zero-tooling way
+**Or the zero-tooling way** — it's a single file, stdlib only:
+
+```sh
 curl -O https://raw.githubusercontent.com/tiny-cloud-ventures/amnesia/main/amnesia.py
 python3 amnesia.py
 ```
@@ -39,6 +50,14 @@ amnesia            # UI at http://localhost:8780 — scan, review, done
 amnesia analyze    # same audit, from the terminal
 amnesia 9000       # different port
 ```
+
+Or, with the plugin: `/amnesia:open` and `/amnesia:scan`.
+
+## Yours, local, reversible
+
+- **Nothing leaves your machine.** The UI binds to localhost only. No accounts, no API keys, no telemetry, no server.
+- **The only thing that ever reads your memories is the Claude account you already use.** The scan pipes your store through your own `claude` CLI — the same subscription Claude Code runs on.
+- **Nothing is ever deleted.** Every "forget", move, and merge is a file move into `~/.claude/memory-trash/`, undoable from the toast or restorable by hand.
 
 ## Why this matters
 
@@ -52,6 +71,8 @@ The analyzer also proposes **consolidation ops** — MOVE a memory to the projec
 - Supersede-don't-delete: rewrite stale facts in place with a `superseded:` marker instead of trashing
 - Gated PROMOTE op: hoist a fact to global scope only when observed in 2+ repos, with provenance
 - Memory support for more agents (Cursor rules, plain CLAUDE.md files)
+
+Issues and PRs welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). One rule above all: zero dependencies is the product.
 
 ## License
 

@@ -1,0 +1,12 @@
+{
+  "name": "amnesia",
+  "description": "Memory hygiene for Claude Code — the amnesia plugin",
+  "owner": { "name": "Tiny Cloud Ventures" },
+  "plugins": [
+    {
+      "name": "amnesia",
+      "source": "./",
+      "description": "Give your agent selective amnesia — see, search, and clean every memory Claude Code has saved about you, with a claude-powered contradiction audit"
+    }
+  ]
+}

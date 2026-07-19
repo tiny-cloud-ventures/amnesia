@@ -11,7 +11,7 @@ existing Claude account.
 
 Deleted memories move to ~/.claude/memory-trash/<project>/ — restore with mv.
 """
-import json, re, shutil, subprocess, sys, threading
+import errno, json, re, shutil, subprocess, sys, threading
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 
@@ -1003,12 +1003,25 @@ def main():
     argv = sys.argv[1:]
     if "--check" in argv:
         _check()
+    elif "--detach" in argv:
+        # ponytail: agent harnesses kill `&` children at session end; a setsid'd child survives
+        port = next((a for a in argv if a.isdigit()), "8780")
+        subprocess.Popen([sys.executable, str(Path(__file__).resolve()), port],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+        print(f"amnesia starting on http://localhost:{port}")
     elif "analyze" in argv:
         analyze()
     else:
         port = int(argv[0]) if argv and argv[0].isdigit() else 8780
+        try:
+            srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+        except OSError as e:
+            if e.errno == errno.EADDRINUSE:
+                sys.exit(f"amnesia is already running — http://localhost:{port}")
+            raise
         print(f"amnesia on http://localhost:{port} — trash: {TRASH}")
-        ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
+        srv.serve_forever()
 
 
 if __name__ == "__main__":

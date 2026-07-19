@@ -1,0 +1,10 @@
+{
+  "name": "amnesia",
+  "description": "Give your agent selective amnesia — see, search, and clean every memory Claude Code has saved about you, with a claude-powered contradiction audit",
+  "version": "0.1.0",
+  "author": { "name": "Tiny Cloud Ventures" },
+  "homepage": "https://github.com/tiny-cloud-ventures/amnesia",
+  "repository": "https://github.com/tiny-cloud-ventures/amnesia",
+  "license": "MIT",
+  "keywords": ["memory", "claude-code", "cleanup", "consolidation"]
+}
