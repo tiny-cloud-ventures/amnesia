@@ -14,10 +14,10 @@ amnesia is one sentence, one button, one question at a time:
 
 1. Open it: *"Your agent remembers 84 things about you, across 21 projects."* One button: **Scan**.
 2. The scan feeds your whole store to your own `claude` CLI and flags **contradictions**, **stale facts**, **duplicates**, and **misfiled memories**.
-3. **Review** walks you through the flags one at a time, in plain language — *"These can't both be true"*, *"This seems filed in the wrong project"* — with one-word answers: Forget, Move it, Combine them, Keep both. In a hurry? **Fix all** applies every confident consolidation in one click.
-4. Forgetting is one click and reversible: files move to `~/.claude/memory-trash/`, undo is right there in the toast, and the `MEMORY.md` index stays in sync.
+3. **Review** walks you through the flags one at a time, in plain language — *"These can't both be true"*, *"This seems filed in the wrong project"* — with one-word answers: Forget, Move it, Combine them, Keep both. Decisions survive reloads until the next successful scan, which asks again from fresh evidence. In a hurry? **Fix all** previews every confident consolidation, then applies them as one undoable batch.
+4. Every change is reversible: Amnesia snapshots each affected memory and index before changing it. Undo is right there in the toast and under **Recent changes**; it refuses to overwrite a file you edited afterward.
 
-Search, a browse-everything view, and **the map** — the live force-graph above, physics hand-rolled in ~100 lines of dependency-free canvas — are each one click away, never the default.
+Search, a browse-everything view with project filters, date/size sorting, and **the map** — the live force-graph above, physics hand-rolled in ~100 lines of dependency-free canvas — are each one click away, never the default.
 
 ## Install
 
@@ -55,9 +55,9 @@ Or, with the plugin: `/amnesia:open` and `/amnesia:scan`.
 
 ## Yours, local, reversible
 
-- **Nothing leaves your machine.** The UI binds to localhost only. No accounts, no API keys, no telemetry, no server.
+- **Nothing leaves your machine.** The UI binds to localhost only. No accounts, no API keys, no telemetry, no server. Changes require a same-session, same-origin JSON request.
 - **The only thing that ever reads your memories is the Claude account you already use.** The scan pipes your store through your own `claude` CLI — the same subscription Claude Code runs on.
-- **Nothing is ever deleted.** Every "forget", move, and merge is a file move into `~/.claude/memory-trash/`, undoable from the toast or restorable by hand.
+- **Nothing is ever deleted.** Forgotten and merged source files move to `~/.claude/memory-trash/`; every forget, move, merge, and Fix all batch also gets a local recovery snapshot under `~/.claude/amnesia/history/`.
 
 ## Why this matters
 

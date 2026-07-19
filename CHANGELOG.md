@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Review decisions now survive reloads and clear after a successful rescan so findings can be reconsidered from fresh evidence. Scans record their time and an exact memory-store fingerprint; changed memories visibly invalidate old findings before another operation can use them.
+- Forget, move, merge, and Fix all now use hash-guarded local recovery snapshots. **Recent changes** can undo them, while refusing to overwrite files edited afterward.
+- **Fix all** previews its exact moves and merges, applies them atomically, and undoes as one batch.
+- Local mutation endpoints now require JSON plus a per-process session token and same-origin request.
+- Browse adds project filtering, newest/oldest/largest/project sorting, and modified dates. Quick duplicate flags now require identical content instead of merely matching filenames.
+- Interactive text uses keyboard-accessible buttons and live status regions; the memory map respects reduced motion and pauses when hidden.
+
 ## v0.1.0 — 2026-07-19
 
 First release. Give your agent selective amnesia: see, search, and clean every memory Claude Code has saved about you — and let Claude audit its own memory for contradictions.
